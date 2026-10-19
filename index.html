@@ -5,52 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CatWar: смена фона в Игровой</title>
 <style>
-  :root {
-    --bg: #12151c;
-    --border: rgba(255, 255, 255, .08);
-    --gold: #d4a954;
-    --gold-bright: #f0c674;
-    --text: #d9dde3;
-    --muted: #8b93a1;
-  }
   * { box-sizing: border-box; }
   body {
-    font-family: Verdana, Arial, sans-serif;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
     margin: 0;
-    background:
-      radial-gradient(900px 420px at 15% -10%, rgba(212, 169, 84, .10), transparent 60%),
-      radial-gradient(700px 380px at 110% 15%, rgba(90, 140, 255, .08), transparent 55%),
-      var(--bg);
-    color: var(--text);
+    background: #1a1a1a;
+    color: #d9d9d9;
     min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
   }
-  .wrap { max-width: 680px; margin: 0 auto; padding: 56px 20px 64px; }
-
-  .eyebrow {
-    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
-    color: var(--gold); margin-bottom: 10px;
-  }
-  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 14px; color: #fff; font-weight: bold; }
-  .lead { font-size: 14px; line-height: 1.6; color: var(--muted); margin: 0 0 28px; max-width: 560px; }
-
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: lowercase; color: #999; margin-bottom: 12px; }
+  h1 { font-size: 24px; margin: 0 0 14px; color: #fff; font-weight: bold; }
+  .lead { font-size: 13px; line-height: 1.7; color: #b3b3b3; margin: 0 0 26px; max-width: 480px; }
   .btn {
-    display: inline-block; padding: 13px 30px; border-radius: 12px;
-    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
-    color: #22180a; font-weight: bold; font-size: 15px;
-    text-decoration: none;
-    box-shadow: 0 6px 18px rgba(212, 169, 84, .25);
-    transition: transform .12s ease, box-shadow .12s ease;
+    display: inline-block; padding: 12px 26px; border-radius: 10px;
+    background: #e8e8e8; color: #1a1a1a; font-weight: bold; font-size: 14px;
+    text-decoration: none; font-family: inherit;
   }
-  .btn:hover { transform: translateY(-1px); box-shadow: 0 9px 24px rgba(212, 169, 84, .35); }
+  .btn:hover { background: #fff; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="eyebrow">Userscript</div>
-  <h1>Смена фона в Игровой</h1>
-  <p class="lead">Нажмите на кнопку в правом нижнем углу, вставьте ссылку на нужную
-     картинку и фон CW3 заменится на неё.</p>
-  <a class="btn" href="catwar-game-bg.user.js">Установить</a>
+<div>
+  <div class="eyebrow">userscript</div>
+  <h1>смена фона в игровой</h1>
+  <p class="lead">нажмите на кнопку в правом нижнем углу, вставьте ссылку на нужную картинку и фон cw3 заменится на неё</p>
+  <a class="btn" href="catwar-game-bg.user.js">установить</a>
 </div>
 </body>
 </html>
