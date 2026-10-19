@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CatWar: смена фона игры
 // @namespace    cw-mod-game-bg
-// @version      1.0.0
-// @description  Плавающая кнопка на игровой странице: вставь ссылку на картинку — фон игры CatWar заменится на неё. Фон сохраняется между обновлениями страницы. Кнопка «Сбросить» возвращает всё как было.
+// @version      1.1.0
+// @description  Плавающая кнопка на игровой странице: вставь ссылку на картинку — фон игрового поля CatWar заменится на неё. Фон сохраняется между обновлениями страницы. Кнопка «Сбросить» возвращает всё как было.
 // @author       cw-mod
 // @match        https://catwar.su/cw3*
 // @match        https://catwar.net/cw3*
@@ -26,51 +26,115 @@
     // Запоминаем исходные фоны, чтобы вернуть их при сбросе.
     const original = new Map();
 
-    const TARGETS = ['body', '#app', '#game', '#field', 'canvas'];
+    // Игровое поле: #cages_div — фон текущей локации (нарисован на нём же),
+    // #cages_overflow и #act — чёрная подложка, вылезающая при отдалении зума.
+    const FIELD_SELECTORS = ['#cages_div', '#cages_overflow', '#act'];
 
-    function apply(url) {
+    // Фолбэк для других страниц: элементы, на которых обычно живёт фон.
+    const FALLBACK_SELECTORS = ['body', '#app', '#game', '#field', 'canvas'];
+
+    function pickTarget() {
+        if (document.querySelector('#cages_div')) {
+            return FIELD_SELECTORS;
+        }
+        return FALLBACK_SELECTORS;
+    }
+
+    function findTargetElement() {
+        if (document.querySelector('#cages_div')) {
+            return document.querySelector('#cages_div');
+        }
+        for (const sel of FALLBACK_SELECTORS) {
+            const el = document.querySelector(sel);
+            if (el) return el;
+        }
+        return null;
+    }
+
+    function rememberOriginal(selectors) {
+        if (original.size !== 0 || currentUrl === '') return;
+        selectors.forEach((sel) => {
+            const el = document.querySelector(sel);
+            if (el) {
+                const cs = getComputedStyle(el);
+                original.set(sel, {
+                    image: cs.backgroundImage,
+                    color: cs.backgroundColor,
+                });
+            }
+        });
+    }
+
+    let currentUrl = '';
+
+    function buildRule(url, selectors, isField) {
+        const attach = isField ? '' : ' fixed';
+        if (isField) {
+            // Поле: красим фон локации; подложку под ним делаем прозрачной,
+            // чтобы при отдалении зума виднелось то же поле.
+            return (
+                `#cages_div { background: url("${url}") center center / cover no-repeat !important; }` +
+                `#cages_overflow, #act { background-color: transparent !important; }`
+            );
+        }
+        return (
+            selectors.join(', ') +
+            ` { background: url("${url}") center center / cover no-repeat${attach} !important; }`
+        );
+    }
+
+    let appliedUrl = '';
+    let appliedIsField = false;
+
+    function refresh() {
         let style = document.getElementById(STYLE_ID);
         if (!style) {
             style = document.createElement('style');
             style.id = STYLE_ID;
             document.head.appendChild(style);
         }
+        if (!appliedUrl) {
+            style.textContent = '';
+            return;
+        }
+        const isField = !!document.querySelector('#cages_div');
+        const rules = buildRule(appliedUrl, isField ? FIELD_SELECTORS : FALLBACK_SELECTORS, isField);
+        // Перепоминание исходников при смене типа цели.
+        if (appliedIsField !== isField) {
+            rememberOriginal(isField ? FIELD_SELECTORS : FALLBACK_SELECTORS);
+            appliedIsField = isField;
+        }
+        style.textContent = rules;
+        appliedIsField = isField;
+    }
+
+    function apply(url) {
         if (!url) {
-            restore();
+            localStorage.removeItem(LS_KEY);
+            currentUrl = '';
+            appliedUrl = '';
+            const style = document.getElementById(STYLE_ID);
+            if (style) style.textContent = '';
+            // Восстанавливаем исходные фоны.
+            original.forEach((bg, sel) => {
+                const el = document.querySelector(sel);
+                if (el) {
+                    el.style.backgroundImage = bg.image;
+                    el.style.backgroundColor = bg.color;
+                }
+            });
+            original.clear();
             return;
         }
         localStorage.setItem(LS_KEY, url);
-        // Запоминаем фон только при первой установке (до изменений).
+        currentUrl = url;
+        appliedUrl = url;
+        const isField = !!document.querySelector('#cages_div');
         if (original.size === 0) {
-            TARGETS.forEach((sel) => {
-                const el = document.querySelector(sel);
-                if (el) {
-                    const cs = getComputedStyle(el);
-                    original.set(sel, {
-                        image: cs.backgroundImage,
-                        color: cs.backgroundColor,
-                    });
-                }
-            });
+            rememberOriginal(isField ? FIELD_SELECTORS : FALLBACK_SELECTORS);
+            appliedIsField = isField;
         }
-        // Заменяем фон игрового поля. Фиксированное прикрепление, чтобы не расползалось при скролле лога.
-        style.textContent =
-            TARGETS.join(', ') +
-            ` { background: url("${url}") center center / cover no-repeat fixed !important; }`;
-    }
-
-    function restore() {
-        localStorage.removeItem(LS_KEY);
-        const style = document.getElementById(STYLE_ID);
-        if (style) style.textContent = '';
-        original.forEach((bg, sel) => {
-            const el = document.querySelector(sel);
-            if (el) {
-                el.style.backgroundImage = bg.image;
-                el.style.backgroundColor = bg.color;
-            }
-        });
-        original.clear();
+        refresh();
     }
 
     /* ---------- UI ---------- */
@@ -124,16 +188,16 @@
         const root = document.createElement('div');
         root.id = ROOT_ID;
         root.innerHTML = `
-            <button class="cwbg-btn" title="Сменить фон игры">🖼️</button>
+            <button class="cwbg-btn" title="Сменить фон игрового поля">🖼️</button>
             <div class="cwbg-popup">
-                <div class="cwbg-title">Фон игры CatWar</div>
+                <div class="cwbg-title">Фон игрового поля</div>
                 <input type="text" placeholder="https://ссылка-на-картинку.jpg" spellcheck="false">
                 <img class="cwbg-preview" alt="">
                 <div class="cwbg-row">
                     <button class="cwbg-act">Применить</button>
-                    <button class="cwbg-act cwbg-reset">Сбросить</button>
+                    <button class="cwbg-reset">Сбросить</button>
                 </div>
-                <div class="cwbg-note">Ссылка на любое изображение (jpg/png/gif/webp). Фон сохраняется для этого сайта.</div>
+                <div class="cwbg-note">Ссылка на любое изображение (jpg/png/gif/webp). Заменяется картинка самой локации, фон страницы остаётся нетронутым. NB: некоторые внешние сайты игра может не подгружать (CSP) — если поле не изменилось, попробуй прямую ссылку на файл.</div>
             </div>
         `;
         const styleNode = document.createElement('style');
@@ -168,8 +232,7 @@
             }
         }
 
-        function onInput() { updatePreview(); }
-        input.addEventListener('input', onInput);
+        input.addEventListener('input', updatePreview);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') apply(input.value.trim());
         });
@@ -180,17 +243,22 @@
         root.querySelector('.cwbg-reset').addEventListener('click', () => {
             input.value = '';
             updatePreview();
-            restore();
+            apply('');
         });
 
-        // Возвращаем сохранённый фон
+        // Возвращаем сохранённый фон. #cages_div появляется асинхронно (игра строит DOM),
+        // поэтому подхватываем его повторами, а также следим за случайными сменами цели.
         const saved = localStorage.getItem(LS_KEY);
         if (saved) {
             input.value = saved;
             updatePreview();
-            requestAnimationFrame(() => apply(saved));
+            apply(saved);
         }
     }
 
     buildUI();
+
+    // Периодический refresh: непустой appliedUrl в разные моменты игры
+    // переключает правила между "поле" и "фолбэк", если цель исчезла/появилась.
+    setInterval(refresh, 2000);
 })();
