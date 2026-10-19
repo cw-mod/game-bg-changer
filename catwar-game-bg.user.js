@@ -180,7 +180,6 @@
             background: #c8a04d; color: #222; font-size: 12px; font-weight: bold; cursor: pointer;
         }
         #${ROOT_ID} button.cwbg-reset { background: #55555f; color: #eee; }
-        #${ROOT_ID} .cwbg-note { font-size: 11px; color: #999; line-height: 1.35; }
         `;
     }
 
