@@ -197,7 +197,6 @@
                     <button class="cwbg-act">Применить</button>
                     <button class="cwbg-reset">Сбросить</button>
                 </div>
-                <div class="cwbg-note">Ссылка на любое изображение (jpg/png/gif/webp). Заменяется картинка самой локации, фон страницы остаётся нетронутым. NB: некоторые внешние сайты игра может не подгружать (CSP) — если поле не изменилось, попробуй прямую ссылку на файл.</div>
             </div>
         `;
         const styleNode = document.createElement('style');
