@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CatWar: смена фона игры
 // @namespace    cw-mod-game-bg
-// @version      1.1.1
-// @description  Плавающая кнопка на игровой странице: вставь ссылку на картинку — фон игрового поля CatWar заменится на неё. Фон сохраняется между обновлениями страницы. Кнопка «Сбросить» возвращает всё как было.
+// @version      1.2.0
+// @description  Плавающая кнопка: вставь ссылку на картинку — фон игрового поля CatWar заменится на неё. Дополнительно: галочка «взять картинку из ЛС» — скрипт сам найдёт диалог отправителя и возьмёт картинку из его личного сообщения.
 // @author       cw-mod
 // @match        https://catwar.su/cw3*
 // @match        https://catwar.net/cw3*
@@ -22,6 +22,9 @@
     const LS_KEY = 'cw-bg-changer:url';
     const STYLE_ID = 'cw-bg-changer-style';
     const ROOT_ID = 'cw-bg-changer-root';
+
+    // Отправитель, чьё ЛС используется как источник картинки.
+    const LS_SENDER = 'Млечный Путь';
 
     // Запоминаем исходные фоны, чтобы вернуть их при сбросе.
     const original = new Map();
@@ -137,6 +140,99 @@
         refresh();
     }
 
+    /* =========================================================
+     *  ПАРСИНГ КАРТИНКИ ИЗ ЛС
+     * ========================================================= */
+
+    const AJAX_HEADERS = {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    function post(url, data) {
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AJAX_HEADERS,
+            body: data,
+        }).then((r) => r.json());
+    }
+
+    // Список диалогов (входящие). Возвращает массив {id, login, subject}.
+    async function fetchDialogs() {
+        const out = [];
+        for (let page = 1; page <= 5; page++) {
+            const data = await post('/ajax/mess_folder', 'folder=0&page=' + page + '&del=0');
+            const list = data && Array.isArray(data.msg) ? data.msg : [];
+            if (!list.length) break;
+            list.forEach((m) =>
+                out.push({
+                    id: String(m.id),
+                    login: m.login || m['6'] || '',
+                    subject: m.subject || m['4'] || '',
+                    time: m.time || m['3'] || '',
+                })
+            );
+            if (list.length < 20) break;
+        }
+        return out;
+    }
+
+    // Текст сообщения (HTML) по id диалога.
+    async function fetchMessageHtml(dialogId) {
+        const data = await post('/ajax/mess_show', 'id=' + encodeURIComponent(dialogId));
+        if (!data || data.fail) throw new Error('диалог не найден');
+        const html = (data.msg && (data.msg.text || data.msg['text'])) || '';
+        return String(html);
+    }
+
+    // Достаём из HTML сообщения картинки и выбираем самую "сюжетную".
+    function pickImageFromHtml(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const imgs = [...doc.querySelectorAll('img')].map((i) => i.getAttribute('src')).filter(Boolean);
+
+        // Отсекаем служебные картинки сайта (иконки, смайлы, аватарчики, svg).
+        const isService = (src) =>
+            /\/img\/|\/css\/|smile|emoji|avatar|\.svg($|\?)/i.test(src);
+
+        const candidates = imgs.filter((src) => !isService(src));
+        const pool = candidates.length ? candidates : imgs;
+        if (!pool.length) return null;
+
+        // Предпочитаем растр (jpg/png/jpeg/webp), он обычно и есть картинка локации.
+        const raster = pool.filter((src) => /\.(jpe?g|png|webp|gif)($|\?)/i.test(src));
+        const chosen = (raster.length ? raster : pool)[0];
+
+        // Относительные ссылки приводим к абсолютным.
+        try {
+            return new URL(chosen, location.origin).href;
+        } catch (e) {
+            return chosen;
+        }
+    }
+
+    // Полный сценарий: найти диалог отправителя и достать из него картинку.
+    async function fetchImageFromLs(senderName) {        const dialogs = await fetchDialogs();
+        if (!dialogs.length) throw new Error('нет диалогов');
+
+        let dialog = null;
+        const want = (senderName || '').trim().toLowerCase();
+        if (want) {
+            dialog = dialogs.find((d) => (d.login || '').toLowerCase() === want);
+            if (!dialog) {
+                dialog = dialogs.find((d) => (d.login || '').toLowerCase().includes(want));
+            }
+        } else {
+            dialog = dialogs[0];
+        }
+        if (!dialog) throw new Error('диалог от «' + senderName + '» не найден');
+
+        const html = await fetchMessageHtml(dialog.id);
+        const url = pickImageFromHtml(html);
+        if (!url) throw new Error('в ЛС «' + dialog.login + '» нет картинок');
+        return { url, dialog };
+    }
+
     /* ---------- UI ---------- */
 
     function css() {
@@ -180,6 +276,15 @@
             background: #c8a04d; color: #222; font-size: 12px; font-weight: bold; cursor: pointer;
         }
         #${ROOT_ID} button.cwbg-reset { background: #55555f; color: #eee; }
+        #${ROOT_ID} .cwbg-ls {
+            display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ddd;
+            cursor: pointer; user-select: none;
+        }
+        #${ROOT_ID} .cwbg-ls input { width: 14px; height: 14px; accent-color: #c8a04d; }
+        #${ROOT_ID} .cwbg-lsrow { display: none; flex-direction: column; gap: 6px; }
+        #${ROOT_ID} .cwbg-lsrow.open { display: flex; }
+        #${ROOT_ID} .cwbg-status { font-size: 11px; color: #9ad; line-height: 1.35; }
+        #${ROOT_ID} .cwbg-status.err { color: #e08a8a; }
         `;
     }
 
@@ -192,6 +297,13 @@
                 <div class="cwbg-title">Фон игрового поля</div>
                 <input type="text" placeholder="https://ссылка-на-картинку.jpg" spellcheck="false">
                 <img class="cwbg-preview" alt="">
+                <label class="cwbg-ls">
+                    <input type="checkbox" class="cwbg-ls-check">
+                    <span>взять картинку из ЛС</span>
+                </label>
+                <div class="cwbg-lsrow">
+                    <div class="cwbg-status"></div>
+                </div>
                 <div class="cwbg-row">
                     <button class="cwbg-act">Применить</button>
                     <button class="cwbg-reset">Сбросить</button>
@@ -205,8 +317,11 @@
 
         const btn = root.querySelector('.cwbg-btn');
         const popup = root.querySelector('.cwbg-popup');
-        const input = root.querySelector('input');
+        const input = root.querySelector('input[type="text"]');
         const preview = root.querySelector('.cwbg-preview');
+        const lsCheck = root.querySelector('.cwbg-ls-check');
+        const lsRow = root.querySelector('.cwbg-lsrow');
+        const status = root.querySelector('.cwbg-status');
 
         btn.addEventListener('click', () => {
             popup.classList.toggle('open');
@@ -230,17 +345,44 @@
             }
         }
 
-        input.addEventListener('input', updatePreview);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') apply(input.value.trim());
+        function setStatus(text, isError) {
+            status.textContent = text || '';
+            status.classList.toggle('err', !!isError);
+        }
+
+        lsCheck.addEventListener('change', () => {
+            lsRow.classList.toggle('open', lsCheck.checked);
         });
 
-        root.querySelector('.cwbg-act').addEventListener('click', () => {
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') onApply();
+        });
+
+        async function onApply() {
+            if (lsCheck.checked) {
+                setStatus('Ищу картинку в ЛС…');
+                try {
+                    const res = await fetchImageFromLs(LS_SENDER);
+                    input.value = res.url;
+                    updatePreview();
+                    apply(res.url);
+                    setStatus('Взято из ЛС: ' + res.dialog.login + ' («' + res.dialog.subject + '»)');
+                } catch (e) {
+                    setStatus('Не получилось: ' + (e && e.message ? e.message : e), true);
+                }
+                return;
+            }
             apply(input.value.trim());
+        }
+
+        root.querySelector('.cwbg-act').addEventListener('click', () => {
+            onApply();
         });
         root.querySelector('.cwbg-reset').addEventListener('click', () => {
             input.value = '';
             updatePreview();
+            setStatus('');
             apply('');
         });
 
